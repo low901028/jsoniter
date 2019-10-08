@@ -27,6 +27,11 @@ type Config struct {
 	CaseSensitive                 bool
 }
 
+// A lot of people feel like use it like `encoding/json` ,jsoniter.NewIJSON().Marshal()...
+func NewIJSON() API {
+	return ConfigCompatibleWithStandardLibrary
+}
+
 // API the public interface of this package.
 // Primary Marshal and Unmarshal.
 type API interface {
@@ -83,8 +88,8 @@ type frozenConfig struct {
 }
 
 func (cfg *frozenConfig) initCache() {
-	cfg.decoderCache = concurrent.NewMap()   // 解码缓存
-	cfg.encoderCache = concurrent.NewMap()	 // 编码缓存
+	cfg.decoderCache = concurrent.NewMap() // 解码缓存
+	cfg.encoderCache = concurrent.NewMap() // 编码缓存
 }
 
 // 添加到缓存
@@ -114,6 +119,7 @@ func (cfg *frozenConfig) getEncoderFromCache(cacheKey uintptr) ValEncoder {
 	}
 	return nil
 }
+
 // 配置缓存
 var cfgCache = concurrent.NewMap()
 
@@ -139,20 +145,20 @@ func (cfg Config) Froze() API {
 		disallowUnknownFields:         cfg.DisallowUnknownFields,
 		caseSensitive:                 cfg.CaseSensitive,
 	}
-	api.streamPool = &sync.Pool{                    // 缓存stream  便于重复利用 减少GC压力
+	api.streamPool = &sync.Pool{ // 缓存stream  便于重复利用 减少GC压力
 		New: func() interface{} {
 			return NewStream(api, nil, 512)
 		},
 	}
-	api.iteratorPool = &sync.Pool{                 // 缓存iterator 便于重复利用 减少GC压力
+	api.iteratorPool = &sync.Pool{ // 缓存iterator 便于重复利用 减少GC压力
 		New: func() interface{} {
 			return NewIterator(api)
 		},
 	}
-	api.initCache()                                // 编码和解码本地缓存
+	api.initCache() // 编码和解码本地缓存
 	encoderExtension := EncoderExtension{}
 	decoderExtension := DecoderExtension{}
-	if cfg.MarshalFloatWith6Digits {                 // 添加扩展选项的内容
+	if cfg.MarshalFloatWith6Digits { // 添加扩展选项的内容
 		api.marshalFloatWith6Digits(encoderExtension)
 	}
 	if cfg.EscapeHTML {
@@ -172,35 +178,35 @@ func (cfg Config) Froze() API {
 
 // 缓冲config便于重复利用
 func (cfg Config) frozeWithCacheReuse(extraExtensions []Extension) *frozenConfig {
-	api := getFrozenConfigFromCache(cfg)  // 获取缓存中的内容
-	if api != nil {  // 有则直接返回
+	api := getFrozenConfigFromCache(cfg) // 获取缓存中的内容
+	if api != nil {                      // 有则直接返回
 		return api
 	}
-	api = cfg.Froze().(*frozenConfig)  // 无则重新创建新的config
-	for _, extension := range extraExtensions {  // 增加其他扩展选项 进行附加到config
+	api = cfg.Froze().(*frozenConfig)           // 无则重新创建新的config
+	for _, extension := range extraExtensions { // 增加其他扩展选项 进行附加到config
 		api.RegisterExtension(extension)
 	}
-	addFrozenConfigToCache(cfg, api)          // 将config及其实例放置在cache中
+	addFrozenConfigToCache(cfg, api) // 将config及其实例放置在cache中
 	return api
 }
 
 // 验证json
 func (cfg *frozenConfig) validateJsonRawMessage(extension EncoderExtension) {
-	encoder := &funcEncoder{func(ptr unsafe.Pointer, stream *Stream) {  // 编码函数
-		rawMessage := *(*json.RawMessage)(ptr)  // 原生json消息
-		iter := cfg.BorrowIterator([]byte(rawMessage))  // 通过获取本地cache中的iterator实例并将该iterator原有的内容重置，将其关联到新的[]byte上 便于后续的read
+	encoder := &funcEncoder{func(ptr unsafe.Pointer, stream *Stream) { // 编码函数
+		rawMessage := *(*json.RawMessage)(ptr)         // 原生json消息
+		iter := cfg.BorrowIterator([]byte(rawMessage)) // 通过获取本地cache中的iterator实例并将该iterator原有的内容重置，将其关联到新的[]byte上 便于后续的read
 		iter.Read()
-		if iter.Error != nil {    // 获取iterator出现错误
+		if iter.Error != nil { // 获取iterator出现错误
 			stream.WriteRaw("null")
-		} else {   // 返回iterator 并将原生json消息以string的形式写入到stream
+		} else { // 返回iterator 并将原生json消息以string的形式写入到stream
 			cfg.ReturnIterator(iter)
 			stream.WriteRaw(string(rawMessage))
 		}
-	}, func(ptr unsafe.Pointer) bool {  // 检查原生json消息是否空
+	}, func(ptr unsafe.Pointer) bool { // 检查原生json消息是否空
 		return len(*((*json.RawMessage)(ptr))) == 0
 	}}
-	extension[reflect2.TypeOfPtr((*json.RawMessage)(nil)).Elem()] = encoder  // 保留对encoding.json的支持
-	extension[reflect2.TypeOfPtr((*RawMessage)(nil)).Elem()] = encoder       // jsoniter的支持
+	extension[reflect2.TypeOfPtr((*json.RawMessage)(nil)).Elem()] = encoder // 保留对encoding.json的支持
+	extension[reflect2.TypeOfPtr((*RawMessage)(nil)).Elem()] = encoder      // jsoniter的支持
 }
 
 func (cfg *frozenConfig) useNumber(extension DecoderExtension) {
@@ -257,7 +263,7 @@ func (encoder *lossyFloat64Encoder) IsEmpty(ptr unsafe.Pointer) bool {
 // for float variables for better performance.
 func (cfg *frozenConfig) marshalFloatWith6Digits(extension EncoderExtension) {
 	// for better performance
-	extension[reflect2.TypeOfPtr((*float32)(nil)).Elem()] = &lossyFloat32Encoder{}   // 通过只需要指定Type而不是具体的实例 减少空间的占有？？？
+	extension[reflect2.TypeOfPtr((*float32)(nil)).Elem()] = &lossyFloat32Encoder{} // 通过只需要指定Type而不是具体的实例 减少空间的占有？？？
 	extension[reflect2.TypeOfPtr((*float64)(nil)).Elem()] = &lossyFloat64Encoder{}
 }
 
@@ -277,15 +283,15 @@ func (cfg *frozenConfig) escapeHTML(encoderExtension EncoderExtension) {
 	encoderExtension[reflect2.TypeOfPtr((*string)(nil)).Elem()] = &htmlEscapedStringEncoder{}
 }
 
-func (cfg *frozenConfig) cleanDecoders() {   // 清理本地缓存中的解码器
-	typeDecoders = map[string]ValDecoder{}   // 类型
-	fieldDecoders = map[string]ValDecoder{}  // 字段
+func (cfg *frozenConfig) cleanDecoders() { // 清理本地缓存中的解码器
+	typeDecoders = map[string]ValDecoder{}                   // 类型
+	fieldDecoders = map[string]ValDecoder{}                  // 字段
 	*cfg = *(cfg.configBeforeFrozen.Froze().(*frozenConfig)) // config
 }
 
-func (cfg *frozenConfig) cleanEncoders() {  // 清理本地缓存中的编码器
-	typeEncoders = map[string]ValEncoder{}  // 类型
-	fieldEncoders = map[string]ValEncoder{} // 字段
+func (cfg *frozenConfig) cleanEncoders() { // 清理本地缓存中的编码器
+	typeEncoders = map[string]ValEncoder{}                   // 类型
+	fieldEncoders = map[string]ValEncoder{}                  // 字段
 	*cfg = *(cfg.configBeforeFrozen.Froze().(*frozenConfig)) // 配置
 }
 
@@ -299,16 +305,16 @@ func (cfg *frozenConfig) MarshalToString(v interface{}) (string, error) { // 序
 	return string(stream.Buffer()), nil
 }
 
-func (cfg *frozenConfig) Marshal(v interface{}) ([]byte, error) {  // 序列化
+func (cfg *frozenConfig) Marshal(v interface{}) ([]byte, error) { // 序列化
 	stream := cfg.BorrowStream(nil)
 	defer cfg.ReturnStream(stream)
 	stream.WriteVal(v)
 	if stream.Error != nil {
 		return nil, stream.Error
 	}
-	result := stream.Buffer()                 // 通过将stream对应的[]byte赋值到临时[]byte 便于stream进行回收到Pool中
+	result := stream.Buffer() // 通过将stream对应的[]byte赋值到临时[]byte 便于stream进行回收到Pool中
 	copied := make([]byte, len(result))
-	copy(copied, result)                      // 将stream关联的[]byte 拷贝到临时[]byte中
+	copy(copied, result) // 将stream关联的[]byte 拷贝到临时[]byte中
 	return copied, nil
 }
 
@@ -348,7 +354,7 @@ func (cfg *frozenConfig) Get(data []byte, path ...interface{}) Any {
 	return locatePath(iter, path)
 }
 
-func (cfg *frozenConfig) Unmarshal(data []byte, v interface{}) error {  // 反序列化
+func (cfg *frozenConfig) Unmarshal(data []byte, v interface{}) error { // 反序列化
 	iter := cfg.BorrowIterator(data)
 	defer cfg.ReturnIterator(iter)
 	iter.ReadVal(v)
@@ -363,12 +369,12 @@ func (cfg *frozenConfig) Unmarshal(data []byte, v interface{}) error {  // 反�
 	return iter.Error
 }
 
-func (cfg *frozenConfig) NewEncoder(writer io.Writer) *Encoder {   //新建编码器
+func (cfg *frozenConfig) NewEncoder(writer io.Writer) *Encoder { //新建编码器
 	stream := NewStream(cfg, writer, 512)
 	return &Encoder{stream}
 }
 
-func (cfg *frozenConfig) NewDecoder(reader io.Reader) *Decoder {  // 新建解码器
+func (cfg *frozenConfig) NewDecoder(reader io.Reader) *Decoder { // 新建解码器
 	iter := Parse(cfg, reader, 512)
 	return &Decoder{iter}
 }
